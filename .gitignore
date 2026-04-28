@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+._*
+.Trash*
+
+# openFrameworks build artifacts
+example-*/bin/
+example-*/obj/
+example-*/openFrameworks-Info.plist
+
+# Per-developer OF_ROOT override
+example-*/config.make
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs
+*.log
