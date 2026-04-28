@@ -6,13 +6,15 @@ Stream audio between your openFrameworks apps and Ableton Live, TouchDesigner, M
 
 ## Status
 
-**Functional** on macOS (Apple Silicon and Intel). Bidirectional audio validated against Ableton Live 12.4, TouchDesigner, Max/MSP, and VCV Rack on the same LAN. Linux and Windows configurations are present in `addon_config.mk` and expected to work; testing on those platforms is in progress.
+**Functional** on macOS (Apple Silicon and Intel). Bidirectional audio validated against Ableton Live 12.4 (beta and release builds), TouchDesigner, Max/MSP, and VCV Rack on the same LAN. Linux and Windows configurations are present in `addon_config.mk` and expected to work; testing on those platforms is in progress.
 
 This addon is part of **VoidLinkAudio**, an open R&D project that brings the same Link Audio interop to multiple hosts (oF, TD, Max, VCV, VST3/AU). See the parent repository for the other targets.
 
 ## What is Link Audio
 
 Link Audio is an extension of Ableton Link that lets multiple applications share **audio streams** in addition to the shared tempo and beat clock that Link already provides. Streams are advertised by name on the local network and can be picked up by any subscriber.
+
+Link Audio is part of Ableton Link's open-source SDK and is exposed in **Ableton Live starting with version 12.4** (public beta from February 2026, public release on May 5, 2026). Host-to-host audio between any other Link Audio app on the network does not require Live.
 
 In Link Audio's model:
 
@@ -36,10 +38,12 @@ Clone or download this addon into your openFrameworks `addons/` directory:
 
 ```bash
 cd of_v0.12.x_<platform>_release/addons/
-git clone https://github.com/gluon/ofxAbletonLinkAudio.git ofxAbletonLinkAudio
+git clone --recursive https://github.com/gluon/ofxAbletonLinkAudio.git ofxAbletonLinkAudio
 ```
 
-The shared core (`LinkAudioManager`, `AudioRingBuffer`) and the Ableton Link SDK (with its embedded ASIO standalone networking module) are bundled inside the addon under `libs/`. Nothing else to install.
+The `--recursive` flag is needed because Ableton Link is included as a git submodule (with its own asio-standalone sub-submodule). If you forgot it, run `git submodule update --init --recursive` inside the addon folder.
+
+The shared core (`LinkAudioManager`, `AudioRingBuffer`) is vendored under `libs/core/`. The Ableton Link SDK (with its embedded ASIO standalone networking module) is fetched via the submodule under `libs/link/`. Nothing else to install.
 
 Use the openFrameworks Project Generator (or `projectGenerator -a ofxAbletonLinkAudio`) to add the addon to your project. The included `addon_config.mk` handles all platform-specific compile flags, defines, and linker flags (CoreFoundation on macOS, pthread on Linux, ws2_32 / iphlpapi / winmm on Windows).
 
@@ -195,7 +199,7 @@ class ofxLinkAudioReceiveStream {
 - macOS 11.0 or later (Apple Silicon and Intel)
 - Linux x64 / ARM (configured in `addon_config.mk`, testing in progress)
 - Windows 10+ via MSYS2/MinGW or Visual Studio (configured, testing in progress)
-- Ableton Live 12.4 or later for cross-host interop with Live
+- **Ableton Live 12.4** (public release May 5, 2026) or later for cross-host interop with Live
 - Any other Link Audio host
 
 The addon needs C++17 (used internally by `core/` and the Link SDK).
@@ -216,7 +220,7 @@ ofxAbletonLinkAudio/
 │   └── ofxLinkAudioReceiveStream.cpp
 ├── libs/
 │   ├── core/                    Shared C++ core (LinkAudioManager, AudioRingBuffer)
-│   └── link/                    Ableton Link SDK (with ASIO standalone)
+│   └── link/                    Ableton Link SDK (git submodule, with ASIO standalone)
 ├── example-send/
 ├── example-receive/
 └── example-pingpong/
@@ -230,7 +234,7 @@ Ableton Certified Trainer · Max Certified Trainer.
 
 ## Acknowledgements
 
-Built on top of [Ableton Link](https://github.com/Ableton/link), the open-source synchronization library by **Ableton AG** (MIT license). Link Audio is the audio extension shipped with Ableton Link starting in Live 12.4.
+Built on top of [Ableton Link](https://github.com/Ableton/link), the open-source synchronization library by **Ableton AG** (MIT license). Link Audio is the audio extension shipped with Ableton Link, exposed in Ableton Live starting with version 12.4 (public release May 5, 2026).
 
 This implementation is independent and is **not endorsed, certified, or supported by Ableton**. "Ableton", "Live", and "Link" are trademarks of Ableton AG.
 
