@@ -32,6 +32,32 @@ This addon exposes two stream classes that mirror oF's `ofSoundStream` conventio
 
 Both streams own a worker thread that handles all "heavy" Link API calls (peer setup, channel discovery, subscribe/unsubscribe), and an audio thread that runs the lock-free DSP path. Auto-subscribe is on by default, so a Receive stream transparently reconnects when a matching channel reappears on the network.
 
+## Link session timing
+
+In addition to streaming audio, both stream classes expose the shared Link session as plain getters and setters. An app can read the current tempo, beat, phase, and transport state, and can also write back: changes propagate to all Link peers (Live, Max, TouchDesigner, etc.).
+
+```cpp
+double getTempo();
+void   setTempo(double bpm);
+
+bool   isTransportPlaying();
+void   setTransport(bool playing);
+
+double getBeat (double quantum = 4.0);
+double getPhase(double quantum = 4.0);
+```
+
+These wrap `captureAppSessionState()` / `commitAppSessionState()` internally and are intended for the app thread (`setup`, `update`, key handlers). They must not be called from inside `audioOut()` or `audioIn()`. For sample-accurate audio-thread reads, capture an `AudioSessionState` directly via your own `LinkAudioManager` handle.
+
+```cpp
+void update() override {
+    double tempo   = sendStream.getTempo();
+    double phase   = sendStream.getPhase(4.0);
+    bool   playing = sendStream.isTransportPlaying();
+    // visualize, drive a sequencer, etc.
+}
+```
+
 ## Installation
 
 Clone or download this addon into your openFrameworks `addons/` directory:
@@ -121,6 +147,8 @@ Three examples are included:
 - **`example-receive`** subscribes to a channel and visualizes the incoming audio on stereo oscilloscopes plus peak meters. The peer name and channel name are editable at runtime via the keyboard (`p` to edit From Peer, `c` to edit From Channel, `enter` to commit, `esc` to cancel).
 - **`example-pingpong`** combines a Receive and a Send in the same application. Audio is pulled from one channel, run through a stereo ping-pong delay, and republished on another channel. Demonstrates that Send and Receive can cohabit in one app.
 
+All three examples display the live Link session timing (tempo, phase, transport) and let you write back to it from the keyboard: `t` / `y` to nudge the tempo by 1 BPM, `r` to toggle the transport. Changes propagate to every Link peer on the network.
+
 Build any example with the standard openFrameworks workflow:
 
 ```bash
@@ -159,6 +187,14 @@ class ofxLinkAudioSendStream {
     int         getNumPeers()        const;
     uint64_t    getFramesPublished() const;
     uint64_t    getFramesDropped()   const;
+
+    // Link session timing (app thread; not for audioOut)
+    double      getTempo();
+    void        setTempo(double bpm);
+    bool        isTransportPlaying();
+    void        setTransport(bool playing);
+    double      getBeat (double quantum = 4.0);
+    double      getPhase(double quantum = 4.0);
 };
 
 struct ofxLinkAudioReceiveSettings {
@@ -190,6 +226,14 @@ class ofxLinkAudioReceiveStream {
     uint64_t    getFramesDropped()    const;
     uint32_t    getStreamSampleRate() const;
     uint32_t    getStreamNumChannels()const;
+
+    // Link session timing (app thread; not for audioIn)
+    double      getTempo();
+    void        setTempo(double bpm);
+    bool        isTransportPlaying();
+    void        setTransport(bool playing);
+    double      getBeat (double quantum = 4.0);
+    double      getPhase(double quantum = 4.0);
 };
 ```
 
@@ -234,7 +278,7 @@ Ableton Certified Trainer · Max Certified Trainer.
 
 ## Acknowledgements
 
-Built on top of [Ableton Link](https://github.com/Ableton/link), the open-source synchronization library by **Ableton AG** (MIT license). Link Audio is the audio extension shipped with Ableton Link, exposed in Ableton Live starting with version 12.4 (public release May 5, 2026).
+Built on top of [Ableton Link](https://github.com/Ableton/link), the open-source synchronization library by **Ableton AG**, dual-licensed under GPLv2+ and a proprietary commercial license. Link Audio is the audio extension shipped with Ableton Link, exposed in Ableton Live starting with version 12.4 (public release May 5, 2026).
 
 This implementation is independent and is **not endorsed, certified, or supported by Ableton**. "Ableton", "Live", and "Link" are trademarks of Ableton AG.
 
@@ -242,7 +286,9 @@ See [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md) for the complete attribution li
 
 ## License
 
-ofxAbletonLinkAudio is released under the MIT License — see [`LICENSE`](LICENSE).
+ofxAbletonLinkAudio (this addon's source, examples, and documentation) is released under the MIT License — see [`LICENSE`](LICENSE).
+
+Note that the addon links against Ableton Link, which is dual-licensed under GPLv2+ and a proprietary commercial license from Ableton. If you build against the open-source GPL variant of Link (the default when using the bundled submodule), the resulting binary inherits GPL obligations. To ship a closed-source product, obtain a commercial Link license from Ableton.
 
 This is **R&D code**. It builds, runs, and has been tested in real bidirectional sessions across multiple hosts, but it is not a commercial product and there is no warranty of any kind, express or implied. See the LICENSE for the formal disclaimer.
 
