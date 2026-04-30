@@ -93,11 +93,19 @@ void ofApp::draw() {
     ofDrawBitmapString("Recv:  " + ofToString(receiveStream.getFramesReceived()), 20, y); y += dy;
     ofDrawBitmapString("Drop:  " + ofToString(receiveStream.getFramesDropped()),  20, y); y += dy * 2;
 
+    // Link session timing (read live from the shared session - main thread only)
+    ofSetColor(180, 230, 180);
+    ofDrawBitmapString("Tempo:        " + ofToString(receiveStream.getTempo(), 1) + " BPM",                              20, y); y += dy;
+    ofDrawBitmapString("Phase:        " + ofToString(receiveStream.getPhase(4.0), 3) + "  (q=4)",                        20, y); y += dy;
+    ofDrawBitmapString("Transport:    " + std::string(receiveStream.isTransportPlaying() ? "playing" : "stopped"),       20, y); y += dy * 2;
+    ofSetColor(255);
+
     // ---- Help ----
     ofSetColor(150);
     if (editField == EDIT_NONE) {
         ofDrawBitmapString("[p] edit From Peer    [c] edit From Channel",   20, y); y += dy;
-        ofDrawBitmapString("[space] toggle enable",                         20, y); y += dy * 2;
+        ofDrawBitmapString("[space] toggle enable",                         20, y); y += dy;
+        ofDrawBitmapString("[t/y] tempo -/+       [r] toggle transport",    20, y); y += dy * 2;
     } else {
         ofDrawBitmapString("Editing: type, [enter] commit, [esc] cancel",   20, y); y += dy * 2;
     }
@@ -210,6 +218,11 @@ void ofApp::keyPressed(int key) {
         case 'p': beginEdit(EDIT_FROM_PEER);    break;
         case 'c': beginEdit(EDIT_FROM_CHANNEL); break;
         case ' ': receiveStream.setEnabled(!receiveStream.getEnabled()); break;
+
+        // Link session control (writes propagate to all peers)
+        case 't': receiveStream.setTempo(std::max( 20.0, receiveStream.getTempo() - 1.0)); break;
+        case 'y': receiveStream.setTempo(std::min(999.0, receiveStream.getTempo() + 1.0)); break;
+        case 'r': receiveStream.setTransport(!receiveStream.isTransportPlaying());         break;
     }
 }
 

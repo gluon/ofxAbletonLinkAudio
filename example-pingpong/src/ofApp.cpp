@@ -138,11 +138,20 @@ void ofApp::draw() {
     ofDrawBitmapString("Feedback: " + ofToString(feedback.load(), 2),         20, y); y += dy;
     ofDrawBitmapString("Wet:      " + ofToString(wet.load(),      2),         20, y); y += dy * 2;
 
+    // ---- Link session timing ----
+    ofSetColor(180, 230, 180);
+    ofDrawBitmapString("LINK SESSION", 20, y); y += dy;
+    ofDrawBitmapString("Tempo:     " + ofToString(rxStream.getTempo(), 1) + " BPM",                              20, y); y += dy;
+    ofDrawBitmapString("Phase:     " + ofToString(rxStream.getPhase(4.0), 3) + "  (q=4)",                        20, y); y += dy;
+    ofDrawBitmapString("Transport: " + std::string(rxStream.isTransportPlaying() ? "playing" : "stopped"),       20, y); y += dy * 2;
+    ofSetColor(255);
+
     // ---- Help ----
     ofSetColor(150);
     if (editField == EDIT_NONE) {
         ofDrawBitmapString("[1/2] Rx Peer / Channel    [3/4] Tx Peer / Channel", 20, y); y += dy;
-        ofDrawBitmapString("[a/z] time -/+   [q/s] fb -/+   [d/e] wet -/+",      20, y); y += 30;
+        ofDrawBitmapString("[a/z] time -/+   [q/s] fb -/+   [d/e] wet -/+",      20, y); y += dy;
+        ofDrawBitmapString("[t/y] tempo -/+   [r] toggle transport",             20, y); y += 30;
 
         ofSetColor(110);
         ofDrawBitmapString("Receives a Link Audio channel, applies a stereo ping-pong delay,",        20, y); y += 18;
@@ -258,6 +267,11 @@ void ofApp::keyPressed(int key) {
         case 's': feedback.store(std::min(0.95f, feedback.load() + 0.05f)); break;
         case 'd': wet.store(std::max(0.0f, wet.load() - 0.05f)); break;
         case 'e': wet.store(std::min(1.0f, wet.load() + 0.05f)); break;
+
+        // Link session control (writes propagate to all peers)
+        case 't': rxStream.setTempo(std::max( 20.0, rxStream.getTempo() - 1.0)); break;
+        case 'y': rxStream.setTempo(std::min(999.0, rxStream.getTempo() + 1.0)); break;
+        case 'r': rxStream.setTransport(!rxStream.isTransportPlaying());         break;
     }
 }
 

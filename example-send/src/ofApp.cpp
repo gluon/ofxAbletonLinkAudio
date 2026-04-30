@@ -112,13 +112,21 @@ void ofApp::draw() {
     ofDrawBitmapString("Pub:  " + ofToString(sendStream.getFramesPublished()), 20, y); y += dy;
     ofDrawBitmapString("Drop: " + ofToString(sendStream.getFramesDropped()),   20, y); y += dy * 2;
 
+    // Link session timing (read live from the shared session — main thread only)
+    ofSetColor(180, 230, 180);
+    ofDrawBitmapString("Tempo:     " + ofToString(sendStream.getTempo(), 1) + " BPM",                                  20, y); y += dy;
+    ofDrawBitmapString("Phase:     " + ofToString(sendStream.getPhase(4.0), 3) + "  (q=4)",                            20, y); y += dy;
+    ofDrawBitmapString("Transport: " + std::string(sendStream.isTransportPlaying() ? "playing" : "stopped"),           20, y); y += dy * 2;
+    ofSetColor(255);
+
     // Help
     ofSetColor(150);
     if (editField == EDIT_NONE) {
         ofDrawBitmapString("[p] edit Peer name    [c] edit Channel",          20, y); y += dy;
         ofDrawBitmapString("[1] sine   [2] saw   [3] square   [4] triangle",  20, y); y += dy;
         ofDrawBitmapString("[a/z] freq L -/+      [q/s] freq R -/+",          20, y); y += dy;
-        ofDrawBitmapString("[d/e] amp  -/+        [space] toggle enable",     20, y); y += dy * 2;
+        ofDrawBitmapString("[d/e] amp  -/+        [space] toggle enable",     20, y); y += dy;
+        ofDrawBitmapString("[t/y] tempo -/+       [r] toggle transport",      20, y); y += dy * 2;
     } else {
         ofDrawBitmapString("Editing: type, [enter] commit, [esc] cancel",     20, y); y += dy * 2;
     }
@@ -220,6 +228,11 @@ void ofApp::keyPressed(int key) {
         case 'e': amp.store(std::min(1.0f, amp.load() + 0.05f)); break;
 
         case ' ': sendStream.setEnabled(!sendStream.getEnabled()); break;
+
+        // Link session control (writes propagate to all peers)
+        case 't': sendStream.setTempo(std::max( 20.0, sendStream.getTempo() - 1.0)); break;
+        case 'y': sendStream.setTempo(std::min(999.0, sendStream.getTempo() + 1.0)); break;
+        case 'r': sendStream.setTransport(!sendStream.isTransportPlaying());         break;
     }
 }
 
