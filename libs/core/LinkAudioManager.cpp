@@ -23,6 +23,11 @@ LinkAudioManager::LinkAudioManager(double initialBpm, std::string peerName)
     // Enable both Link tempo sync and Link Audio channel sharing.
     mLinkAudio.enable(true);
     mLinkAudio.enableLinkAudio(true);
+
+    // Required for setIsPlaying() / isPlaying() to propagate across peers.
+    // Without this, transport changes stay local to this peer and never
+    // reach Live or other VoidLinkAudio instances on the LAN.
+    mLinkAudio.enableStartStopSync(true);
 }
 
 LinkAudioManager::~LinkAudioManager()
@@ -71,4 +76,34 @@ std::string
 LinkAudioManager::peerName() const
 {
     return mLinkAudio.peerName();
+}
+
+// ---- Session state convenience ----------------------------------------------
+
+void
+LinkAudioManager::setTempo(double bpm)
+{
+    auto state = mLinkAudio.captureAppSessionState();
+    state.setTempo(bpm, mLinkAudio.clock().micros());
+    mLinkAudio.commitAppSessionState(state);
+}
+
+double
+LinkAudioManager::tempo()
+{
+    return mLinkAudio.captureAppSessionState().tempo();
+}
+
+void
+LinkAudioManager::setIsPlaying(bool playing)
+{
+    auto state = mLinkAudio.captureAppSessionState();
+    state.setIsPlaying(playing, mLinkAudio.clock().micros());
+    mLinkAudio.commitAppSessionState(state);
+}
+
+bool
+LinkAudioManager::isPlaying()
+{
+    return mLinkAudio.captureAppSessionState().isPlaying();
 }
