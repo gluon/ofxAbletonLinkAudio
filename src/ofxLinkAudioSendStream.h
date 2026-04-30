@@ -84,6 +84,28 @@ public:
     uint64_t    getFramesDropped()   const;
     uint64_t    getFramesNoBuffer()  const;
 
+    // ---- Link session control / query ----
+    //
+    // These read and write the shared Link session state (tempo, transport,
+    // beat, phase). All wrap captureAppSessionState() / commitAppSessionState()
+    // and are thread-safe with respect to other Link API calls. Call from the
+    // app thread / main oF loop / setup / update — NOT from inside
+    // audioOut(). For sample-accurate audio-thread reads, capture an
+    // AudioSessionState directly via your own LinkAudioManager handle.
+    //
+    // Setters propagate to all Link peers (Live, Max, TD, etc.). Reading
+    // returns the current live session value, which reflects changes made
+    // by any peer.
+
+    double getTempo();
+    void   setTempo(double bpm);
+
+    bool   isTransportPlaying();
+    void   setTransport(bool playing);
+
+    double getBeat (double quantum = 4.0);
+    double getPhase(double quantum = 4.0);
+
     // ---- Settings accessor ----
     const ofxLinkAudioSendSettings& getSettings() const { return settings; }
 

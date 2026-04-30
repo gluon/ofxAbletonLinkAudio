@@ -17,7 +17,12 @@
 //   ofxLinkAudioSendStream      publishes audio to a named Link Audio channel
 //   ofxLinkAudioReceiveStream   subscribes to a remote channel and pulls audio
 //
-// Quick example (publishing):
+// Both classes also expose the shared Link session timing (tempo, beat,
+// phase, transport) as plain getters and setters, so an oF app can stay
+// in sync with Live, Max, TD, etc. — both reading the live session value
+// and writing back to it (changes propagate to all peers).
+//
+// Quick example (publishing + reading session timing):
 //
 //   class ofApp : public ofBaseApp {
 //       ofxLinkAudioSendStream sendStream;
@@ -31,6 +36,14 @@
 //           sendStream.setup(s);
 //           sendStream.setOutput(*this);
 //           sendStream.start();
+//       }
+//       void update() {
+//           // Read the live session timing (app thread)
+//           double tempo = sendStream.getTempo();
+//           double phase = sendStream.getPhase(4.0);
+//           bool   playing = sendStream.isTransportPlaying();
+//           // Push a new tempo to all peers
+//           // sendStream.setTempo(128.0);
 //       }
 //       void audioOut(ofSoundBuffer& buffer) override {
 //           // generate audio here

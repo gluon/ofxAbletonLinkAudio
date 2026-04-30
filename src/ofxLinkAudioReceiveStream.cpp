@@ -140,6 +140,44 @@ uint32_t ofxLinkAudioReceiveStream::getStreamSampleRate() const { return streamS
 uint32_t ofxLinkAudioReceiveStream::getStreamNumChannels()const { return streamNumChannels.load(); }
 
 // ----------------------------------------------------------------------------
+// Link session control / query
+// ----------------------------------------------------------------------------
+
+double ofxLinkAudioReceiveStream::getTempo() {
+    if (!manager) return 0.0;
+    return manager->tempo();
+}
+
+void ofxLinkAudioReceiveStream::setTempo(double bpm) {
+    if (!manager) return;
+    manager->setTempo(bpm);
+}
+
+bool ofxLinkAudioReceiveStream::isTransportPlaying() {
+    if (!manager) return false;
+    return manager->isPlaying();
+}
+
+void ofxLinkAudioReceiveStream::setTransport(bool playing) {
+    if (!manager) return;
+    manager->setIsPlaying(playing);
+}
+
+double ofxLinkAudioReceiveStream::getBeat(double quantum) {
+    if (!manager) return 0.0;
+    auto& la = manager->linkAudio();
+    const auto state = la.captureAppSessionState();
+    return state.beatAtTime(la.clock().micros(), quantum);
+}
+
+double ofxLinkAudioReceiveStream::getPhase(double quantum) {
+    if (!manager) return 0.0;
+    auto& la = manager->linkAudio();
+    const auto state = la.captureAppSessionState();
+    return state.phaseAtTime(la.clock().micros(), quantum);
+}
+
+// ----------------------------------------------------------------------------
 // Source callback - runs on Link-managed thread
 // ----------------------------------------------------------------------------
 //

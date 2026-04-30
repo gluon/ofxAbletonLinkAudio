@@ -175,6 +175,44 @@ uint64_t ofxLinkAudioSendStream::getFramesDropped()   const { return framesDropp
 uint64_t ofxLinkAudioSendStream::getFramesNoBuffer()  const { return framesNoBuffer.load(); }
 
 // ----------------------------------------------------------------------------
+// Link session control / query
+// ----------------------------------------------------------------------------
+
+double ofxLinkAudioSendStream::getTempo() {
+    if (!manager) return 0.0;
+    return manager->tempo();
+}
+
+void ofxLinkAudioSendStream::setTempo(double bpm) {
+    if (!manager) return;
+    manager->setTempo(bpm);
+}
+
+bool ofxLinkAudioSendStream::isTransportPlaying() {
+    if (!manager) return false;
+    return manager->isPlaying();
+}
+
+void ofxLinkAudioSendStream::setTransport(bool playing) {
+    if (!manager) return;
+    manager->setIsPlaying(playing);
+}
+
+double ofxLinkAudioSendStream::getBeat(double quantum) {
+    if (!manager) return 0.0;
+    auto& la = manager->linkAudio();
+    const auto state = la.captureAppSessionState();
+    return state.beatAtTime(la.clock().micros(), quantum);
+}
+
+double ofxLinkAudioSendStream::getPhase(double quantum) {
+    if (!manager) return 0.0;
+    auto& la = manager->linkAudio();
+    const auto state = la.captureAppSessionState();
+    return state.phaseAtTime(la.clock().micros(), quantum);
+}
+
+// ----------------------------------------------------------------------------
 // Worker thread - owns Link API calls and sink lifecycle
 // ----------------------------------------------------------------------------
 
