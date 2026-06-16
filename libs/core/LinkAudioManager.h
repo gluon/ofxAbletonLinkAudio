@@ -46,7 +46,17 @@ public:
 
     /// Acquire (or create) the process-wide instance for this plugin.
     /// Returned shared_ptr keeps it alive; release by letting it go out of scope.
+    ///
+    /// The no-argument overload keeps the historical default peer name so the
+    /// other hosts (TouchDesigner, Max, VCV, PD, VST) are unaffected.
     static std::shared_ptr<LinkAudioManager> acquire();
+
+    /// Same as acquire(), but lets the calling host pick the peer name used
+    /// when the singleton is created for the first time. If the instance
+    /// already exists, the existing peer name is kept (the name only applies
+    /// at creation). oF passes "oF App" here so a receive-only app advertises
+    /// a neutral identity instead of the shared-core default.
+    static std::shared_ptr<LinkAudioManager> acquire(const std::string& peerName);
 
     ~LinkAudioManager();
 

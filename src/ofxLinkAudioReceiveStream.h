@@ -109,9 +109,6 @@ private:
     void trySubscribe();
     void unsubscribeInternal();
 
-    // Source callback - runs on Link's thread
-    void onSourceBuffer(struct ableton_LinkAudioSource_BufferHandle_proxy*);
-
     mutable std::mutex stateMutex;
     std::string  fromPeerName_;
     std::string  fromChannelName_;
@@ -132,6 +129,17 @@ private:
     // SPSC ring buffers - written by Link callback thread, read by audio thread
     std::unique_ptr<AudioRingBuffer> ringL;
     std::unique_ptr<AudioRingBuffer> ringR;
+
+    // Serialises the consumer-side race on the rings: ring->reset() on the
+    // worker thread (in trySubscribe / unsubscribeInternal) vs ring->read() on
+    // the audio thread. The producer side (the Link callback's ring->write())
+    // is NOT guarded here and must not be: it stays lock-free, and is already
+    // made safe by destroying the source before resetting the rings (source's
+    // dtor swaps the callback under its own lock, so no writer is in flight
+    // once source.reset() returns). The callback therefore never takes this
+    // mutex, which also rules out a lock-ordering inversion against Link's
+    // internal callback lock.
+    std::mutex                       ringMutex;
 
     std::thread             audioThread;
     std::atomic<bool>       audioThreadStop {false};

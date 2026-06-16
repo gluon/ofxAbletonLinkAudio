@@ -136,6 +136,31 @@ private:
     std::string                             currentPeerName;
     bool                                    workerEnabled = false;
 
+    // Serialises every access to `sink`: create/reset on the worker thread vs
+    // dereference in publishStaging() on the audio thread. Without this the
+    // worker can reset() the unique_ptr while the audio thread holds *sink,
+    // which is a use-after-free. This is a memory-safety lock, not a perf one:
+    // the worker side may hold it across LinkAudioSink construction/destruction
+    // (socket and buffer teardown), so the audio thread can block for a
+    // non-deterministic time. Acceptable here only because the "audio thread"
+    // is a software timer that tolerates jitter, not a hard-deadline driver
+    // callback.
+    std::mutex                              sinkMutex;
+
+    // ---- A.3: sample-derived, clock-slaved publish timestamp ----
+    //
+    // hostTimeIdeal_ is a smoothed estimate of the "buffer begin" host time.
+    // Each buffer it advances by a fixed, sample-derived step
+    // (microsPerFrame_ * numFrames) and is gently pulled back toward the real
+    // clock by a low-gain first-order loop. This removes the sleep_until
+    // jitter that would otherwise contaminate the published beat position,
+    // without reintroducing the slow drift a free-running frame counter would
+    // cause. See AUDIT "Correctif A.3" (variante 1). The variante 2
+    // (HostTimeFilter fed a synthetic sampleTime) is the longer-term choice.
+    double hostTimeIdeal_  = 0.0;   // microseconds
+    double microsPerFrame_ = 0.0;   // 1e6 / sampleRate, set in setup()
+    bool   dllInit_        = false; // re-anchored on each start()
+
     // ---- Audio thread ----
     std::thread             audioThread;
     std::atomic<bool>       audioThreadStop {false};

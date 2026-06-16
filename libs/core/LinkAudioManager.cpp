@@ -41,6 +41,15 @@ LinkAudioManager::~LinkAudioManager()
 std::shared_ptr<LinkAudioManager>
 LinkAudioManager::acquire()
 {
+    // Historical default peer name, preserved for the other hosts that call
+    // the no-argument overload (TouchDesigner, Max, VCV, PD, VST). Changing
+    // this would silently rename those peers on the network.
+    return acquire("TouchDesigner");
+}
+
+std::shared_ptr<LinkAudioManager>
+LinkAudioManager::acquire(const std::string& peerName)
+{
     std::lock_guard<std::mutex> lock(sInstanceMutex);
     auto sp = sInstance.lock();
     if (!sp)
@@ -48,7 +57,7 @@ LinkAudioManager::acquire()
         // Use new because constructor is private; std::make_shared
         // doesn't have access.
         sp = std::shared_ptr<LinkAudioManager>(
-            new LinkAudioManager(120.0, "TouchDesigner"));
+            new LinkAudioManager(120.0, peerName));
         sInstance = sp;
     }
     return sp;

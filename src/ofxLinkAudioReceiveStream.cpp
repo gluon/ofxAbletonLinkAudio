@@ -39,6 +39,14 @@ bool ofxLinkAudioReceiveStream::setup(const ofxLinkAudioReceiveSettings& s) {
         ofLogError("ofxLinkAudioReceiveStream") << "numChannels must be 1 or 2";
         return false;
     }
+    if (s.sampleRate <= 0) {
+        ofLogError("ofxLinkAudioReceiveStream") << "invalid sampleRate " << s.sampleRate;
+        return false;
+    }
+    if (s.bufferSize <= 0) {
+        ofLogError("ofxLinkAudioReceiveStream") << "invalid bufferSize " << s.bufferSize;
+        return false;
+    }
 
     settings           = s;
     fromPeerName_      = s.fromPeerName;
@@ -52,7 +60,7 @@ bool ofxLinkAudioReceiveStream::setup(const ofxLinkAudioReceiveSettings& s) {
     ringL.reset(new AudioRingBuffer(kRingSize));
     ringR.reset(new AudioRingBuffer(kRingSize));
 
-    manager = LinkAudioManager::acquire();
+    manager = LinkAudioManager::acquire("oF App");
 
     workerStop.store(false);
     workerThread = std::thread([this] { workerThreadLoop(); });
@@ -180,9 +188,6 @@ double ofxLinkAudioReceiveStream::getPhase(double quantum) {
 // ----------------------------------------------------------------------------
 // Source callback - runs on Link-managed thread
 // ----------------------------------------------------------------------------
-//
-// We define a small helper here that takes the actual BufferHandle by ref
-// (the proxy in the .h is just a forward-decl placeholder).
 
 namespace {
 
@@ -235,10 +240,6 @@ void pushBufferToRings(ableton::LinkAudioSource::BufferHandle& bh,
 
 } // namespace
 
-void ofxLinkAudioReceiveStream::onSourceBuffer(struct ableton_LinkAudioSource_BufferHandle_proxy*) {
-    // unused (kept for ABI symmetry); real callback is set as a lambda inside trySubscribe()
-}
-
 // ----------------------------------------------------------------------------
 
 void ofxLinkAudioReceiveStream::trySubscribe() {
@@ -252,8 +253,14 @@ void ofxLinkAudioReceiveStream::trySubscribe() {
     }
     if (!match) return;
 
-    ringL->reset();
-    ringR->reset();
+    // No source exists at this point (callers reach trySubscribe only when
+    // source == nullptr), so there is no producer in flight. Guard the reset
+    // against a concurrent ring->read() on the audio thread only.
+    {
+        std::lock_guard<std::mutex> lk(ringMutex);
+        ringL->reset();
+        ringR->reset();
+    }
     framesReceived.store(0);
     framesDropped.store(0);
 
@@ -276,7 +283,13 @@ void ofxLinkAudioReceiveStream::trySubscribe() {
 }
 
 void ofxLinkAudioReceiveStream::unsubscribeInternal() {
+    // Destroy the source FIRST. Its dtor swaps the Link callback to a no-op
+    // under Link's own callback lock, so once this returns no callback is in
+    // flight and none will start: the producer side of the rings is quiet.
     source.reset();
+
+    // Now reset the rings, guarded only against the audio-thread reader.
+    std::lock_guard<std::mutex> lk(ringMutex);
     if (ringL) ringL->reset();
     if (ringR) ringR->reset();
 }
@@ -359,8 +372,11 @@ void ofxLinkAudioReceiveStream::audioThreadLoop() {
 
     while (!audioThreadStop.load()) {
 
-        // Drain rings into scratch
+        // Drain rings into scratch. The lock serialises read() against a
+        // ring->reset() on the worker thread (subscribe/unsubscribe); it is a
+        // short, lock-free copy with no Link call underneath, so no inversion.
         if (isSubscribedFlag.load() && ringL && ringR) {
+            std::lock_guard<std::mutex> lk(ringMutex);
             ringL->read(scratchL.data(), static_cast<std::size_t>(settings.bufferSize));
             ringR->read(scratchR.data(), static_cast<std::size_t>(settings.bufferSize));
         } else {

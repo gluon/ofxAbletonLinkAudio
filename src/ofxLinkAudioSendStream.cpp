@@ -14,11 +14,19 @@
 #include "LinkAudioManager.h"
 #include <ableton/LinkAudio.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace {
 
 constexpr std::size_t kInitialMaxSamples = 32768;
+
+// A.3 first-order DLL loop bandwidth (gain). Low gain: a jitter spike on the
+// observed clock only nudges the smoothed timestamp by kDllBandwidth of it,
+// while the residual error still converges to zero so there is no long-term
+// drift versus the real Link clock. Range tried: 0.01 .. 0.1.
+constexpr double kDllBandwidth = 0.05;
 
 inline int16_t floatToInt16Clamped(float v) {
     if (v >=  1.0f) return  32767;
@@ -62,6 +70,11 @@ bool ofxLinkAudioSendStream::setup(const ofxLinkAudioSendSettings& s) {
     peerName_   = s.peerName;
     enabled_    = s.autoEnable;
 
+    // A.3: nominal microseconds per frame, used to advance the smoothed
+    // publish timestamp by a fixed sample-derived step each buffer.
+    microsPerFrame_ = 1.0e6 / static_cast<double>(s.sampleRate);
+    dllInit_        = false;
+
     appBuffer.setSampleRate(s.sampleRate);
     appBuffer.setNumChannels(s.numChannels);
     appBuffer.resize(static_cast<std::size_t>(s.bufferSize) * s.numChannels);
@@ -69,7 +82,7 @@ bool ofxLinkAudioSendStream::setup(const ofxLinkAudioSendSettings& s) {
     stagingBuffer.assign(static_cast<std::size_t>(s.bufferSize) * s.numChannels, 0);
     stagingFrames = 0;
 
-    manager = LinkAudioManager::acquire();
+    manager = LinkAudioManager::acquire("oF App");
 
     workerStop.store(false);
     workerThread = std::thread([this] { workerThreadLoop(); });
@@ -86,7 +99,12 @@ void ofxLinkAudioSendStream::close() {
     workerCv.notify_all();
     if (workerThread.joinable()) workerThread.join();
 
-    sink.reset();
+    // Audio and worker threads are both joined by now, so no concurrent access
+    // to sink remains; the lock here is just for consistency / future-proofing.
+    {
+        std::lock_guard<std::mutex> lk(sinkMutex);
+        sink.reset();
+    }
     manager.reset();
 }
 
@@ -104,6 +122,10 @@ void ofxLinkAudioSendStream::setOutput(ofBaseSoundOutput* app) {
 
 void ofxLinkAudioSendStream::start() {
     if (audioThreadRunning.load()) return;
+
+    // A.3: re-anchor the smoothed timestamp at the next publish, so a stop/start
+    // cycle does not carry a stale hostTimeIdeal_.
+    dllInit_ = false;
 
     audioThreadStop.store(false);
     audioThread = std::thread([this] { audioThreadLoop(); });
@@ -239,7 +261,11 @@ void ofxLinkAudioSendStream::applyState() {
         la.enableLinkAudio(wantEnabled);
         workerEnabled = wantEnabled;
         if (!wantEnabled) {
-            sink.reset();
+            // sink is touched by the audio thread in publishStaging(); guard it.
+            {
+                std::lock_guard<std::mutex> lk(sinkMutex);
+                sink.reset();
+            }
             publishedChannel.clear();
         }
     }
@@ -251,11 +277,21 @@ void ofxLinkAudioSendStream::applyState() {
     }
 
     if (wantChannel != publishedChannel) {
-        sink.reset();
+        // Channel switch tears down the current sink (used by the audio
+        // thread). Guard the reset so publishStaging() never derefs a dangling
+        // *sink.
+        {
+            std::lock_guard<std::mutex> lk(sinkMutex);
+            sink.reset();
+        }
         publishedChannel = wantChannel;
     }
 
     if (!sink && !publishedChannel.empty()) {
+        // Creation must be visible to the audio thread atomically with respect
+        // to its use of *sink. Hold the lock across construction (this is the
+        // non-bounded section assumed by the memory-safety contract: see .h).
+        std::lock_guard<std::mutex> lk(sinkMutex);
         sink.reset(new ableton::LinkAudioSink(la, publishedChannel, kInitialMaxSamples));
         framesPublished.store(0);
         framesDropped.store(0);
@@ -284,6 +320,13 @@ void ofxLinkAudioSendStream::workerThreadLoop() {
 // ----------------------------------------------------------------------------
 
 void ofxLinkAudioSendStream::publishStaging() {
+    // Hold sinkMutex for the whole body: it both guards the !sink test and
+    // keeps *sink / the BufferHandle alive against a concurrent sink.reset()
+    // on the worker thread. The worker may be blocked on this lock while we
+    // commit; that is the accepted trade-off (memory safety over RT latency)
+    // for a timer-driven transport.
+    std::lock_guard<std::mutex> lk(sinkMutex);
+
     if (!sink || stagingFrames == 0) return;
 
     auto& la = manager->linkAudio();
@@ -309,10 +352,32 @@ void ofxLinkAudioSendStream::publishStaging() {
 
     std::memcpy(bh.samples, stagingBuffer.data(), sizeof(int16_t) * totalSamples);
 
-    const auto   state              = la.captureAppSessionState();
-    const auto   now                = la.clock().micros();
-    const double quantum            = 4.0;
-    const double beatsAtBufferBegin = state.beatAtTime(now, quantum);
+    const auto   state   = la.captureAppSessionState();
+    const double quantum = 4.0;
+
+    // A.3: derive the publish timestamp from the sample count, slaved to the
+    // real clock by a first-order loop, instead of reading clock().micros()
+    // raw (which carries the sleep_until jitter straight into the beat grid).
+    const double observed = static_cast<double>(la.clock().micros().count());
+    if (!dllInit_) {
+        hostTimeIdeal_ = observed;   // phase anchor, once per start()
+        dllInit_       = true;
+    } else {
+        const double error = observed - hostTimeIdeal_;
+        // Net step clamped to >= 0: the timestamp may slow down but must never
+        // go backwards. On an OS preemption spike, error can be strongly
+        // negative and kDllBandwidth*error could exceed the nominal advance;
+        // without the clamp hostTimeIdeal_ would regress and beatAtTime() would
+        // be non-monotonic (a backwards beat jump for the peers).
+        const double step = std::max(
+            microsPerFrame_ * static_cast<double>(numFrames) + kDllBandwidth * error,
+            0.0);
+        hostTimeIdeal_ += step;
+    }
+    const auto hostTime = std::chrono::microseconds(
+        static_cast<std::chrono::microseconds::rep>(std::llround(hostTimeIdeal_)));
+
+    const double beatsAtBufferBegin = state.beatAtTime(hostTime, quantum);
 
     const bool ok = bh.commit(state,
                               beatsAtBufferBegin,
